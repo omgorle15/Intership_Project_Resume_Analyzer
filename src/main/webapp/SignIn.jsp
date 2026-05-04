@@ -1,5 +1,16 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8"
     pageEncoding="UTF-8"%>
+      <%
+		Cookie[] cookies = request.getCookies();
+		String savedEmail = "";
+		if(cookies != null) {
+		    for(Cookie c : cookies) {
+		        if("rememberedEmail".equals(c.getName())) {
+		            savedEmail = c.getValue();
+		        }
+		    }
+		}
+%>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,7 +36,8 @@
                     <i class="fa fa-envelope"></i>
                 </span>
                 <input type="email" class="form-control border-start-0"
-                       name="email" placeholder="Enter Email" required>
+			       name="email" placeholder="Enter Email" 
+			       value="<%= savedEmail %>" required>
             </div>
 
             <div class="mb-4 input-group">

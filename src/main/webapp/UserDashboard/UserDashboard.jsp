@@ -1,4 +1,4 @@
-<%@ include file="layout.jsp" %>
+
 
 <%@ page import="java.sql.*" %>
 <%@ page import="util.DBConnection" %>
@@ -6,11 +6,36 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <%
-if (session.getAttribute("userName") == null) {
-    response.sendRedirect("SignIn.jsp");
+if(session.getAttribute("userName") == null) {
+    response.reset();
+    out.clear();
+    out.clearBuffer();
+%>
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+<script>
+Swal.fire({
+    icon: 'warning',
+    title: 'Session Expired!',
+    text: 'Please login again to continue.',
+    confirmButtonColor: '#3085d6',
+    confirmButtonText: 'Go to Login'
+}).then(() => {
+    window.location.href = "../SignIn.jsp";
+});
+</script>
+</body>
+</html>
+<%
     return;
 }
-
+%>
+<%@ include file="layout.jsp" %>
+<%
 Integer userId = (Integer) session.getAttribute("userId");
 
 

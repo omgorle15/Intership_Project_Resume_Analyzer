@@ -55,6 +55,9 @@ try(Connection con = DBConnection.getConnection())
             session.setAttribute("userRole", "user");
             /* session timeout */
            session.setMaxInactiveInterval(600);
+            Cookie ckUser = new Cookie("rememberedEmail", email);
+           ckUser.setMaxAge(7 * 24 * 60 * 60); // 7 days
+           response.addCookie(ckUser);
             response.sendRedirect("UserDashboard/UserDashboard.jsp?login=success");
         }
 
@@ -67,6 +70,9 @@ try(Connection con = DBConnection.getConnection())
                 session.setAttribute("userRole", "mentor");
                 /* session timeout */
                session.setMaxInactiveInterval(600);
+               Cookie ckMentor = new Cookie("rememberedEmail", email);
+               ckMentor.setMaxAge(7 * 24 * 60 * 60); // 7 days
+               response.addCookie(ckMentor);
                 PreparedStatement ps2 = con.prepareStatement(
                     "SELECT id FROM mentor_profile WHERE user_id=?"
                 );
