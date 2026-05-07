@@ -8,6 +8,7 @@
 .sidebar a.active { background: #2563eb; color: white; }
 .sidebar .logout-link { color: #f87171 !important; }
 .sidebar .logout-link:hover { background: rgba(248,113,113,.15) !important; }
+.sidebar .divider { border-top: 1px solid #374151; margin: 8px 15px; }
 </style>
 
 <div class="col-md-2 sidebar p-0 d-flex flex-column">
@@ -16,9 +17,7 @@
         <i class="fa fa-chalkboard-teacher me-2"></i>Mentor Panel
     </div>
 
-    <%
-    String currentPage = request.getServletPath();
-    %>
+    <% String currentPage = request.getServletPath(); %>
 
     <a href="MentorDashboard.jsp" class="<%= currentPage.contains("MentorDashboard") ? "active" : "" %>">
         <i class="fa fa-gauge"></i> Dashboard
@@ -29,12 +28,21 @@
     <a href="updateMentor.jsp" class="<%= currentPage.contains("updateMentor") ? "active" : "" %>">
         <i class="fa fa-edit"></i> Update Profile
     </a>
+
+    <div class="divider"></div>
+
     <a href="bookTimeSlot.jsp" class="<%= currentPage.contains("bookTimeSlot") || currentPage.contains("addTimeSlot") ? "active" : "" %>">
         <i class="fa fa-clock"></i> Time Slots
     </a>
     <a href="viewUser.jsp" class="<%= currentPage.contains("viewUser") ? "active" : "" %>">
         <i class="fa fa-users"></i> Booked Users
     </a>
+    <a href="test.jsp" class="<%= currentPage.contains("test") ? "active" : "" %>">
+        <i class="fa fa-history"></i> Session History
+    </a>
+
+    <div class="divider"></div>
+
     <a href="../logout.jsp" class="logout-link">
         <i class="fa fa-sign-out-alt"></i> Logout
     </a>

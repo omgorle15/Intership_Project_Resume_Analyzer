@@ -3,22 +3,42 @@
 <%@ page session="true" %>
 
 <%
-Integer id   = (Integer) session.getAttribute("userId");
-String name  = (String)  session.getAttribute("userName");
-String role  = (String)  session.getAttribute("userRole");
+/*
+ * Reads from MENTOR-SPECIFIC session keys (mentor_id, mentor_name, mentor_logged_in)
+ * So even if a user logs in on another tab and sets "userName", this page
+ * still shows the correct mentor name from "mentor_name" key.
+ */
+Boolean mentorLoggedIn = (Boolean) session.getAttribute("mentor_logged_in");
+Integer id             = (Integer) session.getAttribute("mentor_id");
+String  name           = (String)  session.getAttribute("mentor_name");
 
-if (id == null || !"mentor".equalsIgnoreCase(role)) {
+if (mentorLoggedIn == null || !mentorLoggedIn || id == null) {
     response.sendRedirect("../SignIn.jsp");
     return;
 }
 
-int totalUsers    = 0;
-int totalBookings = 0;
-int pendingCount  = 0;
-int approvedCount = 0;
-String bio            = "";
-String photo          = "";
-String specialization = "";
+// Sync shared keys so included files (sidebar etc.) still work
+session.setAttribute("userId",   id);
+session.setAttribute("userName", name);
+session.setAttribute("userRole", "mentor");
+
+// Fetch mentorProfileId fresh from DB (in case session lost it)
+Integer mentorProfileId = (Integer) session.getAttribute("mentor_profile_id");
+if (mentorProfileId == null) {
+    try (Connection con = DBConnection.getConnection()) {
+        PreparedStatement pmp = con.prepareStatement("SELECT id FROM mentor_profile WHERE user_id=?");
+        pmp.setInt(1, id);
+        ResultSet rmp = pmp.executeQuery();
+        if (rmp.next()) {
+            mentorProfileId = rmp.getInt("id");
+            session.setAttribute("mentor_profile_id", mentorProfileId);
+            session.setAttribute("mentorProfileId",   mentorProfileId);
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+}
+
+int totalUsers = 0, totalBookings = 0, pendingCount = 0, approvedCount = 0;
+String bio = "", photo = "", specialization = "";
 
 try (Connection con = DBConnection.getConnection()) {
 
@@ -26,24 +46,26 @@ try (Connection con = DBConnection.getConnection()) {
     ResultSet rs1 = ps1.executeQuery();
     if (rs1.next()) totalUsers = rs1.getInt(1);
 
-    PreparedStatement ps2 = con.prepareStatement(
-        "SELECT COUNT(*), " +
-        "SUM(CASE WHEN mb.status='Pending'  THEN 1 ELSE 0 END), " +
-        "SUM(CASE WHEN mb.status='Approved' THEN 1 ELSE 0 END) " +
-        "FROM mentor_booking mb " +
-        "JOIN mentor_profile mp ON mb.mentor_profile_id = mp.id " +
-        "WHERE mp.user_id = ?"
-    );
-    ps2.setInt(1, id);
-    ResultSet rs2 = ps2.executeQuery();
-    if (rs2.next()) {
-        totalBookings = rs2.getInt(1);
-        pendingCount  = rs2.getInt(2);
-        approvedCount = rs2.getInt(3);
+    if (mentorProfileId != null) {
+        PreparedStatement ps2 = con.prepareStatement(
+            "SELECT COUNT(*), " +
+            "SUM(CASE WHEN mb.status='Pending'  THEN 1 ELSE 0 END), " +
+            "SUM(CASE WHEN mb.status='Approved' THEN 1 ELSE 0 END) " +
+            "FROM mentor_booking mb " +
+            "JOIN mentor_profile mp ON mb.mentor_profile_id = mp.id " +
+            "WHERE mp.user_id = ?"
+        );
+        ps2.setInt(1, id);
+        ResultSet rs2 = ps2.executeQuery();
+        if (rs2.next()) {
+            totalBookings = rs2.getInt(1);
+            pendingCount  = rs2.getInt(2);
+            approvedCount = rs2.getInt(3);
+        }
     }
 
     PreparedStatement ps3 = con.prepareStatement(
-        "SELECT m.bio, m.photo, m.specialization FROM mentor_profile m WHERE m.user_id=?"
+        "SELECT bio, photo, specialization FROM mentor_profile WHERE user_id=?"
     );
     ps3.setInt(1, id);
     ResultSet rs3 = ps3.executeQuery();
@@ -67,9 +89,6 @@ try (Connection con = DBConnection.getConnection()) {
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
 body { background: #f4f6f9; }
-.sidebar { height: 100vh; background: linear-gradient(180deg,#1f2937,#111827); position: sticky; top: 0; }
-.sidebar a { color: #cbd5e1; text-decoration: none; padding: 12px 15px; display: block; border-radius: 8px; margin-bottom: 4px; transition: .2s; }
-.sidebar a:hover, .sidebar a.active { background: #374151; color: white; }
 .stat-card { border-radius: 16px; border: none; transition: transform .2s; }
 .stat-card:hover { transform: translateY(-4px); }
 .profile-img { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid #0d6efd; }
@@ -124,7 +143,6 @@ body { background: #f4f6f9; }
     </div>
 
     <div class="row g-3">
-
         <div class="col-md-5">
             <div class="card shadow-sm rounded-4 border-0 h-100">
                 <div class="card-header bg-white border-0 pt-3">
@@ -141,7 +159,7 @@ body { background: #f4f6f9; }
                     <div>
                         <h6 class="fw-bold mb-1"><%= name %></h6>
                         <p class="text-muted small mb-2">
-                            <%= bio.isEmpty() ? "No bio added yet." : (bio.length() > 100 ? bio.substring(0, 100) + "..." : bio) %>
+                            <%= bio.isEmpty() ? "No bio added yet." : (bio.length() > 100 ? bio.substring(0,100) + "..." : bio) %>
                         </p>
                         <% if (!specialization.isEmpty()) {
                             for (String s : specialization.split(",")) { %>
@@ -169,33 +187,28 @@ body { background: #f4f6f9; }
                     <div class="row g-3">
                         <div class="col-6">
                             <a href="viewUser.jsp" class="btn btn-outline-success w-100 py-3 rounded-3">
-                                <i class="fa fa-users d-block fs-4 mb-1"></i>
-                                View Booked Users
+                                <i class="fa fa-users d-block fs-4 mb-1"></i>View Booked Users
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="bookTimeSlot.jsp" class="btn btn-outline-primary w-100 py-3 rounded-3">
-                                <i class="fa fa-clock d-block fs-4 mb-1"></i>
-                                Manage Slots
+                                <i class="fa fa-clock d-block fs-4 mb-1"></i>Manage Slots
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="addTimeSlot.jsp" class="btn btn-outline-info w-100 py-3 rounded-3">
-                                <i class="fa fa-plus d-block fs-4 mb-1"></i>
-                                Add Time Slot
+                                <i class="fa fa-plus d-block fs-4 mb-1"></i>Add Time Slot
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="updateMentor.jsp" class="btn btn-outline-warning w-100 py-3 rounded-3">
-                                <i class="fa fa-edit d-block fs-4 mb-1"></i>
-                                Update Profile
+                                <i class="fa fa-edit d-block fs-4 mb-1"></i>Update Profile
                             </a>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
     </div>
 
 </div>

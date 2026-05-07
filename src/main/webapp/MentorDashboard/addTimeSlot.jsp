@@ -3,13 +3,25 @@
 <%@ page import="util.DBConnection" %>
 
 <%
-Integer mentorProfileId = (Integer) session.getAttribute("mentorProfileId");
-String  role            = (String)  session.getAttribute("userRole");
+Integer mentorUserId = (Integer) session.getAttribute("userId");
+String  role         = (String)  session.getAttribute("userRole");
 
-if (mentorProfileId == null || !"mentor".equalsIgnoreCase(role)) {
+// ── BUG FIX: Use userId + role check, fetch profileId from DB ──
+if (mentorUserId == null || !"mentor".equalsIgnoreCase(role)) {
     response.sendRedirect("../SignIn.jsp");
     return;
 }
+
+int mentorProfileId = -1;
+try (Connection con = DBConnection.getConnection()) {
+    PreparedStatement pmp = con.prepareStatement("SELECT id FROM mentor_profile WHERE user_id=?");
+    pmp.setInt(1, mentorUserId);
+    ResultSet rmp = pmp.executeQuery();
+    if (rmp.next()) {
+        mentorProfileId = rmp.getInt("id");
+        session.setAttribute("mentorProfileId", mentorProfileId);
+    }
+} catch (Exception e) { e.printStackTrace(); }
 
 String successMsg = request.getParameter("success");
 String errorMsg   = request.getParameter("error");
@@ -27,20 +39,10 @@ body { background: #f4f6f9; }
 .form-card { border-radius: 16px; border: none; }
 .day-btn input[type=radio] { display: none; }
 .day-btn label {
-    display: inline-block;
-    padding: 8px 16px;
-    border: 2px solid #dee2e6;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: .2s;
-    user-select: none;
+    display: inline-block; padding: 8px 16px; border: 2px solid #dee2e6;
+    border-radius: 8px; cursor: pointer; font-weight: 500; transition: .2s; user-select: none;
 }
-.day-btn input[type=radio]:checked + label {
-    background: #198754;
-    color: white;
-    border-color: #198754;
-}
+.day-btn input[type=radio]:checked + label { background: #198754; color: white; border-color: #198754; }
 </style>
 </head>
 <body>
@@ -58,6 +60,13 @@ body { background: #f4f6f9; }
             <i class="fa fa-arrow-left me-1"></i>Back to Slots
         </a>
     </div>
+
+    <% if (mentorProfileId == -1) { %>
+    <div class="alert alert-warning rounded-4">
+        <i class="fa fa-exclamation-triangle me-2"></i>
+        Please <a href="updateMentor.jsp" class="fw-bold">set up your profile first</a> before adding slots.
+    </div>
+    <% } else { %>
 
     <% if (successMsg != null) { %>
         <div class="alert alert-success alert-dismissible fade show rounded-3">
@@ -157,6 +166,7 @@ try (Connection con = DBConnection.getConnection()) {
             </div>
         </div>
     </div>
+    <% } %>
 
 </div>
 </div>

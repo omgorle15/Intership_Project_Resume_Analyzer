@@ -5,10 +5,14 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class DBConnection {
-    private static final String URL = "jdbc:mysql://root:OGsYVwGoeyaSEbYJxgdKcbdBsJGbqiJh@switchyard.proxy.rlwy.net:47810/railway";
-    private static final String USER = "root";
-    private static final String PASSWORD = "OGsYVwGoeyaSEbYJxgdKcbdBsJGbqiJh";
-    
+	private static final String URL      = System.getenv("DB_URL");
+	private static final String USER     = System.getenv("DB_USER");
+	private static final String PASSWORD = System.getenv("DB_PASSWORD");
+
+	
+
+	
+	    
     static {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");

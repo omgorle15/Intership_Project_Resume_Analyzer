@@ -3,16 +3,31 @@
 <%@ page session="true" %>
 
 <%
-Integer mentorProfileId = (Integer) session.getAttribute("mentorProfileId");
-String  role            = (String)  session.getAttribute("userRole");
+Integer mentorUserId = (Integer) session.getAttribute("userId");
+String  role         = (String)  session.getAttribute("userRole");
 
-if (mentorProfileId == null || !"mentor".equalsIgnoreCase(role)) {
+// ── BUG FIX: Check userId+role, NOT mentorProfileId ──
+// mentorProfileId may not be in session if mentor just logged in for first time.
+// We fetch it fresh from DB so new mentors don't get bounced to SignIn.
+if (mentorUserId == null || !"mentor".equalsIgnoreCase(role)) {
     response.sendRedirect("../SignIn.jsp");
     return;
 }
 
+int mentorProfileId = -1;
+try (Connection con = DBConnection.getConnection()) {
+    PreparedStatement pmp = con.prepareStatement("SELECT id FROM mentor_profile WHERE user_id=?");
+    pmp.setInt(1, mentorUserId);
+    ResultSet rmp = pmp.executeQuery();
+    if (rmp.next()) {
+        mentorProfileId = rmp.getInt("id");
+        session.setAttribute("mentorProfileId", mentorProfileId); // keep session in sync
+    }
+} catch (Exception e) { e.printStackTrace(); }
+
+// Delete slot
 String deleteId = request.getParameter("deleteSlot");
-if (deleteId != null) {
+if (deleteId != null && mentorProfileId != -1) {
     try (Connection con = DBConnection.getConnection()) {
         PreparedStatement ps = con.prepareStatement(
             "DELETE FROM mentor_timeslot WHERE slot_id=? " +
@@ -26,21 +41,23 @@ if (deleteId != null) {
 }
 
 int totalSlots = 0, activeSlots = 0, bookedSlots = 0, inactiveSlots = 0;
-try (Connection con = DBConnection.getConnection()) {
-    PreparedStatement ps = con.prepareStatement(
-        "SELECT mts.status, " +
-        "(SELECT COUNT(*) FROM mentor_booking mb WHERE mb.slot_id = mts.slot_id) AS is_booked " +
-        "FROM mentor_timeslot mts WHERE mts.mentor_profile_id=?"
-    );
-    ps.setInt(1, mentorProfileId);
-    ResultSet rs = ps.executeQuery();
-    while (rs.next()) {
-        totalSlots++;
-        if (rs.getInt("is_booked") > 0) bookedSlots++;
-        else if ("ACTIVE".equals(rs.getString("status"))) activeSlots++;
-        else inactiveSlots++;
-    }
-} catch (Exception e) { e.printStackTrace(); }
+if (mentorProfileId != -1) {
+    try (Connection con = DBConnection.getConnection()) {
+        PreparedStatement ps = con.prepareStatement(
+            "SELECT mts.status, " +
+            "(SELECT COUNT(*) FROM mentor_booking mb WHERE mb.slot_id = mts.slot_id) AS is_booked " +
+            "FROM mentor_timeslot mts WHERE mts.mentor_profile_id=?"
+        );
+        ps.setInt(1, mentorProfileId);
+        ResultSet rs = ps.executeQuery();
+        while (rs.next()) {
+            totalSlots++;
+            if (rs.getInt("is_booked") > 0) bookedSlots++;
+            else if ("ACTIVE".equals(rs.getString("status"))) activeSlots++;
+            else inactiveSlots++;
+        }
+    } catch (Exception e) { e.printStackTrace(); }
+}
 %>
 
 <!DOCTYPE html>
@@ -70,6 +87,13 @@ body { background: #f4f6f9; }
             <i class="fa fa-plus me-2"></i>Add New Slot
         </a>
     </div>
+
+    <% if (mentorProfileId == -1) { %>
+    <div class="alert alert-warning rounded-4">
+        <i class="fa fa-exclamation-triangle me-2"></i>
+        Please <a href="updateMentor.jsp" class="fw-bold">set up your profile first</a> before managing slots.
+    </div>
+    <% } else { %>
 
     <div class="row g-3 mb-4">
         <div class="col-md-3">
@@ -103,9 +127,9 @@ body { background: #f4f6f9; }
     </div>
 
     <div class="mb-3 d-flex gap-2 flex-wrap">
-        <span class="badge bg-success px-3 py-2">Active — visible to users</span>
-        <span class="badge bg-warning text-dark px-3 py-2">Booked — user selected this</span>
-        <span class="badge bg-danger px-3 py-2">Inactive — hidden from users</span>
+        <span class="badge bg-success px-3 py-2">Active visible to users</span>
+        <span class="badge bg-warning text-dark px-3 py-2">Booked user selected this</span>
+        <span class="badge bg-danger px-3 py-2">Inactive hidden from users</span>
     </div>
 
     <div class="card shadow-sm border-0 rounded-4">
@@ -137,8 +161,7 @@ try (Connection con = DBConnection.getConnection()) {
     );
     ps.setInt(1, mentorProfileId);
     ResultSet rs = ps.executeQuery();
-    int count = 1;
-    boolean found = false;
+    int count = 1; boolean found = false;
     while (rs.next()) {
         found = true;
         String slotStatus    = rs.getString("status");
@@ -224,6 +247,7 @@ try (Connection con = DBConnection.getConnection()) {
             </div>
         </div>
     </div>
+    <% } %>
 </div>
 </div>
 </div>

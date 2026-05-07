@@ -1,7 +1,16 @@
 eclipse.preferences.version=1
 encoding//src/main/webapp/AdminDashboard/AdminDashboard.jsp=UTF-8
 encoding//src/main/webapp/AdminDashboard/ViewMentor.jsp=UTF-8
+encoding//src/main/webapp/MentorDashboard/addTimeSlot.jsp=UTF-8
 encoding//src/main/webapp/MentorDashboard/bookTimeSlot.jsp=UTF-8
+encoding//src/main/webapp/MentorDashboard/bookingHistory.jsp=UTF-8
+encoding//src/main/webapp/MentorDashboard/sidebar.jsp=UTF-8
+encoding//src/main/webapp/MentorDashboard/test.jsp=UTF-8
+encoding//src/main/webapp/MentorDashboard/updateMentor.jsp=UTF-8
 encoding//src/main/webapp/MentorDashboard/viewUser.jsp=UTF-8
+encoding//src/main/webapp/SignInProcess.jsp=UTF-8
+encoding//src/main/webapp/SignUpProcess.jsp=UTF-8
+encoding//src/main/webapp/UserDashboard/CreateResume.jsp=UTF-8
 encoding//src/main/webapp/UserDashboard/UserDashboard.jsp=UTF-8
+encoding//src/main/webapp/UserDashboard/layout.jsp=UTF-8
 encoding/<project>=UTF-8

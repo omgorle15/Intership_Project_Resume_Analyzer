@@ -1,5 +1,5 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
-<%@ page import="java.sql.*" %>
+<%@ page import="java.sql.*,java.net.*,java.io.*" %>
 <%@ page import="util.DBConnection" %>
 <%@ page session="true" %>
 <%@ include file="layout.jsp" %>
@@ -7,16 +7,19 @@
 <%
 Integer userId = (Integer) session.getAttribute("userId");
 if (userId == null) {
-    response.sendRedirect("SignIn.jsp");
+    response.sendRedirect("../SignIn.jsp");
     return;
 }
 
+// ── Handle Booking Submission ──
 if (request.getMethod().equalsIgnoreCase("POST") && request.getParameter("bookNow") != null) {
     String mpId   = request.getParameter("mentorProfileId");
     String slotId = request.getParameter("slotId");
 
     if (mpId != null && slotId != null && !slotId.isEmpty()) {
         try (Connection con = DBConnection.getConnection()) {
+
+            // Duplicate check
             PreparedStatement chk = con.prepareStatement(
                 "SELECT COUNT(*) FROM mentor_booking WHERE user_id=? AND slot_id=? AND status != 'Rejected'"
             );
@@ -24,12 +27,15 @@ if (request.getMethod().equalsIgnoreCase("POST") && request.getParameter("bookNo
             chk.setInt(2, Integer.parseInt(slotId));
             ResultSet cr = chk.executeQuery();
             cr.next();
+
             if (cr.getInt(1) > 0) {
                 request.setAttribute("bookMsg", "error");
                 request.setAttribute("bookMsgText", "You have already booked this slot.");
             } else {
+                // Insert booking
                 PreparedStatement ins = con.prepareStatement(
-                    "INSERT INTO mentor_booking (mentor_profile_id, user_id, slot_id, status) VALUES (?,?,?,?)"
+                    "INSERT INTO mentor_booking (mentor_profile_id, user_id, slot_id, status, booked_at) VALUES (?,?,?,?,NOW())",
+                    Statement.RETURN_GENERATED_KEYS
                 );
                 ins.setInt(1, Integer.parseInt(mpId));
                 ins.setInt(2, userId);
@@ -37,14 +43,40 @@ if (request.getMethod().equalsIgnoreCase("POST") && request.getParameter("bookNo
                 ins.setString(4, "Pending");
                 ins.executeUpdate();
 
+                // Get new booking ID
+                ResultSet genKeys = ins.getGeneratedKeys();
+                int newBookingId = -1;
+                if (genKeys.next()) newBookingId = genKeys.getInt(1);
+
+                // Mark slot as BOOKED so it disappears from available list
                 PreparedStatement markSlot = con.prepareStatement(
                     "UPDATE mentor_timeslot SET status='BOOKED' WHERE slot_id=?"
                 );
                 markSlot.setInt(1, Integer.parseInt(slotId));
                 markSlot.executeUpdate();
 
+                // ── Send confirmation email via servlet ──
+                if (newBookingId > 0) {
+                    try {
+                        URL url = new URL(request.getScheme() + "://" + request.getServerName()
+                                  + ":" + request.getServerPort()
+                                  + request.getContextPath() + "/sendBookingMail");
+                        HttpURLConnection mailConn = (HttpURLConnection) url.openConnection();
+                        mailConn.setRequestMethod("POST");
+                        mailConn.setDoOutput(true);
+                        String params = "bookingId=" + newBookingId;
+                        mailConn.getOutputStream().write(params.getBytes());
+                        mailConn.getResponseCode(); // trigger the call
+                        mailConn.disconnect();
+                    } catch (Exception mailEx) {
+                        // Mail failure should not break booking
+                        System.err.println("Mail error: " + mailEx.getMessage());
+                    }
+                }
+
                 request.setAttribute("bookMsg", "success");
-                request.setAttribute("bookMsgText", "Booking sent! Waiting for mentor approval.");
+                request.setAttribute("bookMsgText",
+                		"✅ Request is send to mentor successfully after mentor approval slot will booked");
             }
         } catch (Exception e) {
             request.setAttribute("bookMsg", "error");
@@ -53,6 +85,7 @@ if (request.getMethod().equalsIgnoreCase("POST") && request.getParameter("bookNo
     }
 }
 
+// ── Get user's latest booking to show banner ──
 String myBookingDay = null, myBookingTime = null, myBookingStatus = null, myMentorName = null;
 try (Connection con = DBConnection.getConnection()) {
     PreparedStatement ps = con.prepareStatement(
@@ -61,7 +94,7 @@ try (Connection con = DBConnection.getConnection()) {
         "JOIN mentor_profile mp ON mb.mentor_profile_id = mp.id " +
         "JOIN users u ON mp.user_id = u.id " +
         "JOIN mentor_timeslot mts ON mb.slot_id = mts.slot_id " +
-        "WHERE mb.user_id=? ORDER BY mb.booking_id DESC LIMIT 1"
+        "WHERE mb.user_id=? AND mb.is_cleared=0 ORDER BY mb.booking_id DESC LIMIT 1"
     );
     ps.setInt(1, userId);
     ResultSet rs = ps.executeQuery();
@@ -85,21 +118,26 @@ String loadTime        = request.getParameter("loadTime");
     </div>
 </div>
 
+<!-- Current Booking Banner -->
 <% if (myBookingDay != null) {
     String bClass = "info"; String bIcon = "bi-clock";
-    if ("Approved".equalsIgnoreCase(myBookingStatus)) { bClass = "success"; bIcon = "bi-check-circle-fill"; }
-    if ("Rejected".equalsIgnoreCase(myBookingStatus)) { bClass = "danger";  bIcon = "bi-x-circle-fill"; }
+    if ("Approved".equalsIgnoreCase(myBookingStatus))  { bClass = "success"; bIcon = "bi-check-circle-fill"; }
+    if ("Rejected".equalsIgnoreCase(myBookingStatus))  { bClass = "danger";  bIcon = "bi-x-circle-fill"; }
 %>
 <div class="alert alert-<%= bClass %> rounded-4 d-flex align-items-center gap-3 mb-4">
     <i class="bi <%= bIcon %> fs-4"></i>
     <div>
-        <strong>Your Latest Booking:</strong> <%= myMentorName %> —
+        <strong>Your Active Booking:</strong> <%= myMentorName %> —
         <%= myBookingDay %> at <%= myBookingTime %>
         <span class="badge bg-<%= bClass %> ms-2"><%= myBookingStatus %></span>
+        <% if ("Approved".equalsIgnoreCase(myBookingStatus)) { %>
+            <br><small class="mt-1 d-block">📧 Check your email for mentor contact details.</small>
+        <% } %>
     </div>
 </div>
 <% } %>
 
+<!-- Booking Result Message -->
 <%
 String bookMsg     = (String) request.getAttribute("bookMsg");
 String bookMsgText = (String) request.getAttribute("bookMsgText");
@@ -114,12 +152,12 @@ if (bookMsg != null) {
 
 <div class="card shadow-sm border-0 rounded-4 p-4">
 
+    <!-- Step 1: Specialization -->
     <h6 class="fw-bold mb-3"><span class="badge bg-success me-2">1</span>Choose a Specialization</h6>
     <form method="get" class="mb-4">
         <div class="row g-2">
             <% String[] fields = {"Web","Java","C++","Python","Data Science","Machine Learning","UI/UX","Cloud","Android"};
-               for (String f : fields) {
-                   boolean checked = f.equals(selectedField); %>
+               for (String f : fields) { boolean checked = f.equals(selectedField); %>
             <div class="col-auto">
                 <input type="radio" class="btn-check" name="field" id="f_<%= f %>"
                        value="<%= f %>" <%= checked ? "checked" : "" %> onchange="this.form.submit()">
@@ -131,6 +169,8 @@ if (bookMsg != null) {
 
     <% if (selectedField != null) { %>
     <hr>
+
+    <!-- Step 2: Mentor -->
     <h6 class="fw-bold mb-3"><span class="badge bg-success me-2">2</span>Select a Mentor</h6>
     <form method="post">
         <input type="hidden" name="field" value="<%= selectedField %>">
@@ -138,7 +178,7 @@ if (bookMsg != null) {
 <%
 try (Connection con = DBConnection.getConnection()) {
     PreparedStatement ps = con.prepareStatement(
-        "SELECT mp.id, u.name, mp.bio, mp.photo, mp.specialization " +
+        "SELECT mp.id, u.name, mp.bio, mp.photo, mp.specialization, u.phone " +
         "FROM users u " +
         "JOIN mentor_profile mp ON u.id = mp.user_id " +
         "WHERE u.role='mentor' AND u.status='approved' " +
@@ -153,7 +193,8 @@ try (Connection con = DBConnection.getConnection()) {
         String mName  = rs.getString("name");
         String mBio   = rs.getString("bio") != null ? rs.getString("bio") : "";
         String mSpec  = rs.getString("specialization") != null ? rs.getString("specialization") : "";
-        int mpIdVal   = rs.getInt("id");
+        String mPhone = rs.getString("phone") != null ? rs.getString("phone") : "—";
+        int    mpIdVal= rs.getInt("id");
         boolean sel   = String.valueOf(mpIdVal).equals(mentorProfileId);
 %>
             <div class="col-md-4">
@@ -169,12 +210,16 @@ try (Connection con = DBConnection.getConnection()) {
                         <% } %>
                         <div>
                             <strong><%= mName %></strong><br>
-                            <small class="text-muted"><%= mBio.length() > 60 ? mBio.substring(0,60)+"..." : mBio %></small>
+                            <small class="text-muted"><%= mBio.length() > 55 ? mBio.substring(0,55)+"..." : mBio %></small>
                         </div>
                     </div>
                     <% for (String sp : mSpec.split(",")) { %>
                         <span class="badge bg-primary-subtle text-primary me-1 mb-1"><%= sp.trim() %></span>
                     <% } %>
+                    <div class="mt-2 small text-muted">
+                        <i class="bi bi-telephone me-1"></i>
+                        Contact shared via email after booking
+                    </div>
                     <input type="radio" id="mp_<%= mpIdVal %>" name="mentorProfileId"
                            value="<%= mpIdVal %>" class="d-none" <%= sel ? "checked" : "" %>>
                 </div>
@@ -199,6 +244,7 @@ try (Connection con = DBConnection.getConnection()) {
     </form>
     <% } %>
 
+    <!-- Step 3: Time Slots -->
     <% if (loadTime != null && mentorProfileId != null) { %>
     <hr>
     <h6 class="fw-bold mb-3"><span class="badge bg-success me-2">3</span>Pick a Time Slot</h6>
@@ -208,11 +254,11 @@ try (Connection con = DBConnection.getConnection()) {
         <div class="row g-3 mb-3">
 <%
 try (Connection con = DBConnection.getConnection()) {
+    // Only ACTIVE slots — BOOKED slots do NOT appear here
     PreparedStatement ps = con.prepareStatement(
         "SELECT mts.slot_id, mts.day, mts.time " +
         "FROM mentor_timeslot mts " +
-        "WHERE mts.mentor_profile_id=? " +
-        "AND mts.status='ACTIVE' " +
+        "WHERE mts.mentor_profile_id=? AND mts.status='ACTIVE' " +
         "ORDER BY FIELD(mts.day,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), mts.time"
     );
     ps.setInt(1, Integer.parseInt(mentorProfileId));
@@ -222,12 +268,12 @@ try (Connection con = DBConnection.getConnection()) {
         anySlot = true;
         String slotDay  = rs.getString("day");
         String slotTime = rs.getTime("time").toString().substring(0,5);
-        int slotId      = rs.getInt("slot_id");
+        int    slotId   = rs.getInt("slot_id");
 %>
             <div class="col-md-3">
                 <div class="card border-2 border-light rounded-4 text-center p-3 slot-card"
                      style="cursor:pointer"
-                     onclick="selectSlot(this, 'slot_<%= slotId %>')">
+                     onclick="selectSlot(this,'slot_<%= slotId %>')">
                     <i class="bi bi-calendar-event fs-3 text-success mb-1"></i>
                     <div class="fw-bold"><%= slotDay %></div>
                     <div class="text-muted fs-5"><%= slotTime %></div>
@@ -241,7 +287,7 @@ try (Connection con = DBConnection.getConnection()) {
 %>
             <div class="col-12">
                 <div class="alert alert-info rounded-3">
-                    <i class="bi bi-info-circle me-2"></i>No available slots for this mentor right now.
+                    <i class="bi bi-info-circle me-2"></i>No available slots for this mentor right now. Please check back later.
                 </div>
             </div>
 <%
